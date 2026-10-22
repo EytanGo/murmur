@@ -1,0 +1,352 @@
+package co.choclement.murmur
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
+import android.view.View
+
+/**
+ * The typing keyboard, laid out and styled like Gboard: QWERTY with number hints (long-press),
+ * shift and caps lock, two symbol pages, and a toolbar with the voice-mode button.
+ */
+class KeyboardView(context: Context, private val actions: Actions) : View(context) {
+
+    interface Actions {
+        fun onText(text: String)
+        fun onDelete()
+        fun onSpace()
+        fun onEnter()
+        fun onVoiceMode()
+        fun onHide()
+        fun onSettings()
+        fun onPickKeyboard()
+    }
+
+    enum class Page { LETTERS, SYMBOLS, MORE }
+    enum class Shift { OFF, ON, LOCK }
+
+    /** A key: [id] is the character it types, or a special name like "shift". */
+    private data class Key(val id: String, val w: Float = 1f, val hint: String? = null) {
+        val isChar get() = id.length == 1
+    }
+
+    private class Placed(val key: Key, val rect: RectF)
+
+    private val look = Look(context)
+    private val d = look.d
+
+    var shift = Shift.OFF
+        private set
+    var page = Page.LETTERS
+        private set
+    var enter = Look.Enter.RETURN
+        set(v) { field = v; invalidate() }
+
+    // MARK: - Layouts
+
+    private val bottomLetters = listOf(Key("sym", 1.5f), Key(","), Key("voice"), Key("space", 4f), Key("."), Key("enter", 1.5f))
+    private val bottomSymbols = listOf(Key("abc", 1.5f), Key(","), Key("voice"), Key("space", 4f), Key("."), Key("enter", 1.5f))
+
+    private val letters = listOf(
+        "qwertyuiop".mapIndexed { i, c -> Key(c.toString(), hint = ((i + 1) % 10).toString()) },
+        "asdfghjkl".map { Key(it.toString()) },
+        listOf(Key("shift", 1.5f)) + "zxcvbnm".map { Key(it.toString()) } + Key("del", 1.5f),
+        bottomLetters,
+    )
+    private val symbols = listOf(
+        "1234567890".map { Key(it.toString()) },
+        "@#\$_&-+()/".map { Key(it.toString()) },
+        listOf(Key("more", 1.5f)) + "*\"':;!?".map { Key(it.toString()) } + Key("del", 1.5f),
+        bottomSymbols,
+    )
+    private val more = listOf(
+        "~`|•√π÷×¶∆".map { Key(it.toString()) },
+        "£¢€¥^°={}\\".map { Key(it.toString()) },
+        listOf(Key("sym", 1.5f)) + "%©®™✓[]".map { Key(it.toString()) } + Key("del", 1.5f),
+        bottomSymbols,
+    )
+
+    // MARK: - Geometry
+
+    private val toolbarH = 46 * d
+    private val rowH = 56 * d
+    private val sidePad = 3 * d
+    private val bottomPad = 6 * d
+    private val gapX = 3 * d
+    private val gapY = 4.5f * d
+    private var placed = listOf<Placed>()
+    private val voiceButton = RectF()
+    private val settingsButton = RectF()
+    private val hideButton = RectF()
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        setMeasuredDimension(w, (toolbarH + rowH * 4 + bottomPad).toInt())
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = layoutKeys()
+
+    private fun layoutKeys() {
+        val rows = when (page) { Page.LETTERS -> letters; Page.SYMBOLS -> symbols; Page.MORE -> more }
+        val unit = (width - sidePad * 2) / 10f
+        val out = ArrayList<Placed>()
+        rows.forEachIndexed { r, row ->
+            val rowUnits = row.sumOf { it.w.toDouble() }.toFloat()
+            var x = sidePad + (10f - rowUnits) * unit / 2 // the 9-key row sits centred, like Gboard
+            val top = toolbarH + r * rowH
+            for (k in row) {
+                out += Placed(k, RectF(x + gapX, top + gapY, x + k.w * unit - gapX, top + rowH - gapY))
+                x += k.w * unit
+            }
+        }
+        placed = out
+        val t = toolbarH / 2
+        voiceButton.set(sidePad + 4 * d, t - 17 * d, sidePad + 104 * d, t + 17 * d)
+        hideButton.set(width - sidePad - 46 * d, t - 18 * d, width - sidePad - 6 * d, t + 18 * d)
+        settingsButton.set(hideButton.left - 48 * d, hideButton.top, hideButton.left - 8 * d, hideButton.bottom)
+        invalidate()
+    }
+
+    fun setPage(p: Page) {
+        page = p
+        layoutKeys()
+    }
+
+    /** Called by the keyboard service when the cursor is at the start of a sentence (or not). */
+    fun autoShift(on: Boolean) {
+        if (shift == Shift.LOCK || page != Page.LETTERS) return
+        val next = if (on) Shift.ON else Shift.OFF
+        if (next != shift) { shift = next; invalidate() }
+    }
+
+    // MARK: - Drawing
+
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private var pressed: Placed? = null
+
+    override fun onDraw(c: Canvas) {
+        c.drawColor(look.bg)
+        drawToolbar(c)
+        for (p in placed) drawKey(c, p)
+        pressed?.let { drawPreview(c, it) }
+    }
+
+    private fun drawToolbar(c: Canvas) {
+        val r = voiceButton.height() / 2
+        paint.color = look.fn
+        c.drawRoundRect(voiceButton, r, r, paint)
+        look.mic(c, voiceButton.left + 22 * d, voiceButton.centerY(), look.text, 0.85f)
+        label.color = look.text
+        label.textSize = 14 * d
+        label.isFakeBoldText = true
+        label.textAlign = Paint.Align.LEFT
+        c.drawText("Voice", voiceButton.left + 38 * d, voiceButton.centerY() + 5 * d, label)
+        label.textAlign = Paint.Align.CENTER
+        label.isFakeBoldText = false
+        look.gear(c, settingsButton.centerX(), settingsButton.centerY(), look.muted)
+        look.chevronDown(c, hideButton.centerX(), hideButton.centerY(), look.muted)
+    }
+
+    private fun isFunction(k: Key) = k.id in setOf("shift", "del", "sym", "abc", "more", ",", ".", "voice")
+
+    private fun drawKey(c: Canvas, p: Placed) {
+        val k = p.key
+        val r = p.rect
+        val radius = 7 * d
+        paint.color = when {
+            k.id == "enter" -> look.accent
+            page != Page.LETTERS && k.id in setOf(",", ".") -> look.fn
+            isFunction(k) -> look.fn
+            else -> look.key
+        }
+        c.drawRoundRect(r, radius, radius, paint)
+        if (pressed === p) { paint.color = look.pressedTint; c.drawRoundRect(r, radius, radius, paint) }
+
+        val cx = r.centerX(); val cy = r.centerY()
+        when (k.id) {
+            "shift" -> look.shift(c, cx, cy, look.text, shift == Shift.ON, shift == Shift.LOCK)
+            "del" -> look.backspace(c, cx, cy, look.text)
+            "enter" -> look.enter(c, cx, cy, look.onAccent, enter)
+            "voice" -> look.mic(c, cx, cy, look.text)
+            "space" -> {}
+            "sym", "abc", "more" -> {
+                label.color = look.text; label.textSize = 15 * d
+                val text = when (k.id) { "sym" -> "?123"; "abc" -> "ABC"; else -> "=\\<" }
+                c.drawText(text, cx, cy + 5 * d, label)
+            }
+            else -> {
+                label.color = look.text
+                label.textSize = (if (k.id[0].isLetter()) 23 else 21) * d
+                val text = if (shift != Shift.OFF && page == Page.LETTERS) k.id.uppercase() else k.id
+                c.drawText(text, cx, cy - (label.descent() + label.ascent()) / 2, label)
+                k.hint?.let {
+                    label.color = look.muted; label.textSize = 10.5f * d
+                    c.drawText(it, r.right - 6 * d, r.top + 12 * d, label)
+                }
+            }
+        }
+    }
+
+    /** The enlarged letter that pops up above your finger. */
+    private fun drawPreview(c: Canvas, p: Placed) {
+        if (!p.key.isChar) return
+        val r = p.rect
+        val w = r.width() + 10 * d
+        val h = rowH * 1.05f
+        val box = RectF(r.centerX() - w / 2, r.top - h + 2 * d, r.centerX() + w / 2, r.top + 2 * d)
+        paint.color = look.preview
+        paint.setShadowLayer(6 * d, 0f, 2 * d, 0x33000000)
+        c.drawRoundRect(box, 9 * d, 9 * d, paint)
+        paint.clearShadowLayer()
+        label.color = look.text
+        label.textSize = 30 * d
+        val text = if (shift != Shift.OFF && page == Page.LETTERS) p.key.id.uppercase() else p.key.id
+        c.drawText(text, box.centerX(), box.centerY() - (label.descent() + label.ascent()) / 2, label)
+    }
+
+    // MARK: - Touch
+
+    private val main = Handler(Looper.getMainLooper())
+    private var activePointer = -1
+    private var consumed = false     // a long-press already handled this touch
+    private var lastShiftTap = 0L
+    private var lastSpaceAt = 0L
+
+    private val longPress = Runnable {
+        val p = pressed ?: return@Runnable
+        when {
+            p.key.id == "del" -> { consumed = true; repeatDelete.run() }
+            p.key.id == "space" -> { consumed = true; actions.onPickKeyboard(); pressed = null; invalidate() }
+            p.key.hint != null -> { consumed = true; actions.onText(p.key.hint); buzz(); pressed = null; invalidate() }
+        }
+    }
+
+    private val repeatDelete: Runnable = object : Runnable {
+        override fun run() {
+            if (pressed?.key?.id != "del") return
+            actions.onDelete()
+            main.postDelayed(this, 55)
+        }
+    }
+
+    private fun keyAt(x: Float, y: Float): Placed? {
+        // Generous hit areas: nearest key in the row, so the gaps between keys still count.
+        if (y < toolbarH) return null
+        val row = placed.filter { y >= it.rect.top - gapY && y <= it.rect.bottom + gapY }
+        return row.minByOrNull { if (x < it.rect.left) it.rect.left - x else if (x > it.rect.right) x - it.rect.right else 0f }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                val i = e.actionIndex
+                val x = e.getX(i); val y = e.getY(i)
+                if (y < toolbarH) {
+                    if (e.actionMasked == MotionEvent.ACTION_DOWN) toolbarTap(x, y)
+                    return true
+                }
+                // Fast typing: a second finger landing commits the first key straight away.
+                pressed?.let { if (!consumed) fire(it) }
+                cancelTimers()
+                activePointer = e.getPointerId(i)
+                press(keyAt(x, y))
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val i = e.findPointerIndex(activePointer)
+                if (i < 0 || consumed) return true
+                val over = keyAt(e.getX(i), e.getY(i))
+                if (over != null && over !== pressed && pressed?.key?.id != "del") {
+                    cancelTimers()
+                    press(over, slide = true)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (e.getPointerId(e.actionIndex) != activePointer) return true
+                cancelTimers()
+                pressed?.let { if (!consumed && it.key.id != "del") fire(it) }
+                release()
+            }
+            MotionEvent.ACTION_CANCEL -> { cancelTimers(); release() }
+        }
+        return true
+    }
+
+    private fun press(p: Placed?, slide: Boolean = false) {
+        pressed = p
+        consumed = false
+        invalidate()
+        p ?: return
+        if (!slide) buzz()
+        when {
+            p.key.id == "del" -> { actions.onDelete(); main.postDelayed(longPress, 400) }
+            p.key.id == "space" || p.key.hint != null -> main.postDelayed(longPress, 380)
+        }
+    }
+
+    private fun release() {
+        pressed = null
+        activePointer = -1
+        consumed = false
+        invalidate()
+    }
+
+    private fun cancelTimers() {
+        main.removeCallbacks(longPress)
+        main.removeCallbacks(repeatDelete)
+    }
+
+    private fun toolbarTap(x: Float, y: Float) {
+        buzz()
+        when {
+            voiceButton.contains(x, y) -> actions.onVoiceMode()
+            settingsButton.contains(x, y) -> actions.onSettings()
+            hideButton.contains(x, y) -> actions.onHide()
+        }
+    }
+
+    private fun fire(p: Placed) {
+        val k = p.key
+        when (k.id) {
+            "shift" -> {
+                val now = SystemClock.uptimeMillis()
+                shift = when {
+                    now - lastShiftTap < 300 -> Shift.LOCK
+                    shift == Shift.OFF -> Shift.ON
+                    else -> Shift.OFF
+                }
+                lastShiftTap = now
+            }
+            "sym" -> setPage(Page.SYMBOLS)
+            "abc" -> setPage(Page.LETTERS)
+            "more" -> setPage(Page.MORE)
+            "voice" -> actions.onVoiceMode()
+            "enter" -> actions.onEnter()
+            "space" -> {
+                actions.onSpace()
+                lastSpaceAt = SystemClock.uptimeMillis()
+            }
+            else -> {
+                val text = if (shift != Shift.OFF && page == Page.LETTERS) k.id.uppercase() else k.id
+                actions.onText(text)
+                if (shift == Shift.ON) shift = Shift.OFF
+            }
+        }
+        invalidate()
+    }
+
+    /** Was the previous key a space typed just now? (Double-space types a period, like Gboard.) */
+    fun spaceJustTyped() = SystemClock.uptimeMillis() - lastSpaceAt < 700
+
+    private fun buzz() {
+        if (Prefs.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+    }
+}

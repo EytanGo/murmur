@@ -1,0 +1,9 @@
+.DS_Store
+build/
+*.apk
+*.jks
+keystore.properties
+local.properties
+.gradle/
+android/app/libs/*.aar
+android/app/src/main/assets/models/
