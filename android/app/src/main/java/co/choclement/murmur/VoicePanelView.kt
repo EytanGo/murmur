@@ -21,10 +21,10 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
         fun onPauseResume()
         fun onSend()
         fun onTypingMode()
-        fun onHide()
         fun onSettings()
         fun onPaste()
         fun onDeleteWord()
+        fun onClearAll()
     }
 
     enum class State { LISTENING, PAUSED, WORKING, NO_MIC }
@@ -46,7 +46,6 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
     private val panelH = 14 * d + toolH + 16 * d + bigH + 22 * d
     private val keyboardButton = RectF()
     private val settingsButton = RectF()
-    private val hideButton = RectF()
     private val deleteWordButton = RectF()
     private val pasteButton = RectF()
     private val pauseButton = RectF()
@@ -58,9 +57,9 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         val top = 14 * d
-        keyboardButton.set(pad, top, pad + 124 * d, top + toolH)
+        keyboardButton.set(pad, top, pad + toolH, top + toolH)
         var right = w - pad
-        for (r in listOf(hideButton, settingsButton, deleteWordButton, pasteButton)) {
+        for (r in listOf(settingsButton, deleteWordButton, pasteButton)) {
             r.set(right - toolH, top, right, top + toolH)
             right -= toolH + 8 * d
         }
@@ -78,15 +77,10 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
         val t = System.nanoTime() / 1e9
 
         // Toolbar: soft raised squircles on the panel.
-        tool(c, keyboardButton)
-        look.keyboard(c, keyboardButton.left + 26 * d, keyboardButton.centerY(), look.text)
-        text.color = look.text; text.textSize = 14 * d; text.typeface = look.body(800); text.textAlign = Paint.Align.LEFT
-        c.drawText("Keyboard", keyboardButton.left + 46 * d, keyboardButton.centerY() + 5 * d, text)
-        text.textAlign = Paint.Align.CENTER
+        tool(c, keyboardButton); look.keyboard(c, keyboardButton.centerX(), keyboardButton.centerY(), look.text)
         tool(c, pasteButton); look.clipboard(c, pasteButton.centerX(), pasteButton.centerY(), look.text)
         tool(c, deleteWordButton); look.deleteWord(c, deleteWordButton.centerX(), deleteWordButton.centerY(), look.text)
         tool(c, settingsButton); look.sliders(c, settingsButton.centerX(), settingsButton.centerY(), look.text)
-        tool(c, hideButton); look.chevronDown(c, hideButton.centerX(), hideButton.centerY(), look.text)
 
         // The listen button: moss green and gently breathing while listening, clay when paused.
         val fill = when (state) {
@@ -157,27 +151,27 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
         }
     }
 
-    private val repeatDelete: Runnable = object : Runnable {
-        override fun run() {
-            if (pressed !== deleteWordButton) return
-            actions.onDeleteWord()
-            if (Prefs.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            postDelayed(this, 220)
-        }
+    /** Holding delete-word clears the whole text box. */
+    private var cleared = false
+    private val clearAll = Runnable {
+        if (pressed !== deleteWordButton) return@Runnable
+        cleared = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        actions.onClearAll()
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val x = e.x; val y = e.y
-        val target = listOf(pauseButton, sendButton, keyboardButton, settingsButton, hideButton, deleteWordButton, pasteButton).firstOrNull {
+        val target = listOf(pauseButton, sendButton, keyboardButton, settingsButton, deleteWordButton, pasteButton).firstOrNull {
             RectF(it).apply { inset(-6 * d, -6 * d) }.contains(x, y)
         }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pressed = target
                 if (target != null && Prefs.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                // Delete-word acts on touch and repeats while held.
-                if (target === deleteWordButton) { actions.onDeleteWord(); postDelayed(repeatDelete, 450) }
+                // Delete-word: a tap deletes a word (on release), holding clears everything.
+                if (target === deleteWordButton) { cleared = false; postDelayed(clearAll, 500) }
                 invalidate()
             }
             MotionEvent.ACTION_UP -> {
@@ -189,12 +183,12 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
                     sendButton -> actions.onSend()
                     keyboardButton -> actions.onTypingMode()
                     settingsButton -> actions.onSettings()
-                    hideButton -> actions.onHide()
                     pasteButton -> actions.onPaste()
+                    deleteWordButton -> if (!cleared) actions.onDeleteWord()
                 }
-                removeCallbacks(repeatDelete)
+                removeCallbacks(clearAll)
             }
-            MotionEvent.ACTION_CANCEL -> { pressed = null; removeCallbacks(repeatDelete); invalidate() }
+            MotionEvent.ACTION_CANCEL -> { pressed = null; removeCallbacks(clearAll); invalidate() }
         }
         return true
     }

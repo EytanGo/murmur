@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="keyboard_name">Murmur Keyboard</string>
-    <string name="service_summary">Hold the Murmur bubble above your keyboard to dictate.</string>
-    <string name="service_description">Murmur shows a small button above your keyboard when you are typing. Hold it, speak, and let go: your words are transcribed on this phone (nothing is sent anywhere) and typed into the text box you are in. Murmur needs this permission to see which text box is focused and to type into it. It only listens to the microphone while you hold the button.</string>
+    <string name="service_summary">Lets Murmur Keyboard\'s Send button send your message in chat apps.</string>
+    <string name="service_description">In chat apps like WhatsApp, the enter key only adds a new line. When you tap Send in Murmur Keyboard\'s voice mode, Murmur uses this permission to find the app\'s own send button next to your text box and press it. It does nothing else.</string>
 </resources>

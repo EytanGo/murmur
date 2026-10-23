@@ -10,7 +10,7 @@ import kotlin.math.sqrt
 /**
  * Voice typing with live text, for the Murmur keyboard.
  *
- * Like [Session], the recording is cut into phrases at natural pauses and each finished phrase
+ * The recording is cut into phrases at natural pauses and each finished phrase
  * gets a proper transcription ([Listener.onFinal]). On top of that, the phrase you're still in the
  * middle of is re-transcribed every ~0.6 s ([Listener.onPartial]), so words appear as you speak.
  * Phrases are numbered; a partial always belongs to the phrase that's still open.
@@ -18,7 +18,7 @@ import kotlin.math.sqrt
 class LiveSession(
     private val context: Context,
     private val listener: Listener,
-    private val source: Session.AudioSource = Session.MicSource(),
+    private val source: AudioSource = MicSource(),
     /** Phrase numbers start here, so a new session never collides with one still finishing. */
     private val firstPhrase: Int = 0,
 ) {

@@ -2,8 +2,6 @@ package co.choclement.murmur
 
 import android.Manifest
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Canvas
@@ -47,7 +45,6 @@ class MainActivity : Activity() {
     private lateinit var cleanupNote: TextView
     private lateinit var snippetList: LinearLayout
     private lateinit var snippetForm: LinearLayout
-    private lateinit var lastText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -124,14 +121,15 @@ class MainActivity : Activity() {
         col.addView(p.card {
             addView(p.heading("Setup") { c, x, y, color -> look.mic(c, x, y, color, 0.8f) })
             micRow = statusRow("Microphone", "Allow") {
-                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS), 1)
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
             }
             addView(micRow)
-            axRow = statusRow("Voice typing bubble", "Turn on") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            axRow = statusRow("Send in chat apps", "Turn on") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
             addView(axRow)
             axHelp = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(p.text("In the list, tap Installed apps › Murmur voice typing › turn it on.\n\n" +
+                addView(p.text("Lets Send in voice mode press WhatsApp's (and other chat apps') own send button. " +
+                    "In the list, tap Installed apps › Murmur send button › turn it on.\n\n" +
                     "If the switch is greyed out (\"Restricted setting\"): open App info, tap ⋮ in the top corner, " +
                     "choose Allow restricted settings, then come back and try again.", 13f, look.muted, 600).apply {
                     setPadding(0, p.px(4f), 0, p.px(6f))
@@ -141,26 +139,6 @@ class MainActivity : Activity() {
                 })
             }
             addView(axHelp)
-        })
-
-        // How to talk, and where the bubble sits
-        col.addView(p.card {
-            addView(p.heading("How to talk"))
-            addView(p.segmented(listOf("hold" to "Hold to talk", "tap" to "Tap to talk"), Prefs.mode) { Prefs.mode = it })
-            addView(p.text("With the bubble: slide your finger away to cancel.", 12f, look.muted, 600).apply {
-                setPadding(p.px(4f), p.px(6f), 0, p.px(10f))
-            })
-            addView(p.heading("Bubble side"))
-            addView(p.segmented(listOf("left" to "Left", "right" to "Right"), if (Prefs.bubbleX >= 0.5f) "right" else "left") {
-                Prefs.bubbleX = if (it == "right") 0.9f else 0.1f
-            })
-            addView(p.text("Drag the bubble to move it; Murmur remembers the spot for each app.", 12f, look.muted, 600).apply {
-                setPadding(p.px(4f), p.px(6f), 0, p.px(4f))
-            })
-            addView(p.button("Reset positions") {
-                Prefs.resetPositions()
-                Toast.makeText(this@MainActivity, "Bubble back to its default spot in every app", Toast.LENGTH_SHORT).show()
-            }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
         })
 
         // Where the speech is turned into text
@@ -280,12 +258,6 @@ class MainActivity : Activity() {
         col.addView(p.card {
             addView(p.heading("Try it"))
             addView(p.field("Tap here, then speak", multiLine = true).apply { tag = "tryit"; minLines = 3 })
-            lastText = p.text("", 13f, look.muted, 600).apply { setPadding(p.px(4f), p.px(10f), 0, p.px(4f)) }
-            addView(lastText)
-            addView(p.button("Copy last dictation") {
-                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Murmur", Prefs.lastText))
-                Toast.makeText(this@MainActivity, "Copied", Toast.LENGTH_SHORT).show()
-            }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
 
         return ScrollView(this).apply {
@@ -348,7 +320,6 @@ class MainActivity : Activity() {
         cleanupSwitch.isEnabled = hasKey
         cleanupNote.text = if (hasKey) "Smooths out “um”, fixes grammar, keeps only your corrections. Adds about half a second."
             else "Add an OpenAI key under Transcription to use this."
-        lastText.text = if (Prefs.lastText.isEmpty()) "No dictations yet." else "Last: ${Prefs.lastText}"
         status.text = Transcriber.status
         status.removeCallbacks(statusTicker)
         status.post(statusTicker)
@@ -451,29 +422,9 @@ class MainActivity : Activity() {
 
     // MARK: - Testing (debug builds only)
 
-    /** adb: am start -n co.choclement.murmur/.MainActivity --es testWav /data/local/tmp/x.wav */
+    /** adb: am start -n co.choclement.murmur/.MainActivity --es liveWav /data/local/tmp/x.wav — the next voice-mode session plays it. */
     private fun handleTestIntent(intent: Intent?) {
         if (!BuildConfig.DEBUG) return
-        // Voice-mode keyboard test: the next listening session plays this file instead of the mic.
-        intent?.getStringExtra("liveWav")?.let { LiveSession.testAudio = Session.WavSource.load(it); return }
-        val path = intent?.getStringExtra("testWav") ?: return
-        val delay = intent.getLongExtra("delayMs", 0)
-        if (delay > 0) {
-            // Plays into whatever app is in front after the delay (switch apps meanwhile).
-            val samples = Session.WavSource.load(path)
-            MurmurService.instance?.simulateLater(samples, delay) { text, wait ->
-                android.util.Log.i("MurmurTest", "waitAfterRelease=${wait}ms text=$text")
-            }
-            return
-        }
-        val field = window.decorView.findViewWithTag<EditText>("tryit")
-        field.requestFocus()
-        field.postDelayed({
-            val service = MurmurService.instance ?: return@postDelayed run { android.util.Log.i("MurmurTest", "service not running") }
-            val samples = Session.WavSource.load(path)
-            service.simulate(samples) { text, wait ->
-                android.util.Log.i("MurmurTest", "waitAfterRelease=${wait}ms text=$text field=${field.text}")
-            }
-        }, 1500)
+        intent?.getStringExtra("liveWav")?.let { LiveSession.testAudio = WavSource.load(it) }
     }
 }

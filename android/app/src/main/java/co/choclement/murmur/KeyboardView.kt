@@ -13,7 +13,7 @@ import android.view.MotionEvent
 import android.view.View
 
 /**
- * The typing keyboard, laid out and styled like Gboard: QWERTY or Hebrew (the globe key switches)
+ * The typing keyboard, sized and spaced like Gboard (in Murmur's own colors and fonts): QWERTY or Hebrew (the globe key switches)
  * with number hints (long-press), shift and caps lock, two symbol pages, and a toolbar with the
  * voice-mode button.
  */
@@ -25,11 +25,11 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
         fun onSpace()
         fun onEnter()
         fun onVoiceMode()
-        fun onHide()
         fun onSettings()
         fun onPickKeyboard()
         fun onPaste()
         fun onDeleteWord()
+        fun onClearAll()
     }
 
     enum class Page { LETTERS, SYMBOLS, MORE }
@@ -55,8 +55,9 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
 
     // MARK: - Layouts
 
-    private val bottomLetters = listOf(Key("sym", 1.5f), Key(","), Key("voice"), Key("lang"), Key("space", 3f), Key("."), Key("enter", 1.5f))
-    private val bottomSymbols = listOf(Key("abc", 1.5f), Key(","), Key("voice"), Key("space", 4f), Key("."), Key("enter", 1.5f))
+    // Gboard's bottom row: ?123 · , · globe · space · . · enter.
+    private val bottomLetters = listOf(Key("sym", 1.5f), Key(","), Key("lang"), Key("space", 4f), Key("."), Key("enter", 1.5f))
+    private val bottomSymbols = listOf(Key("abc", 1.5f), Key(","), Key("lang"), Key("space", 4f), Key("."), Key("enter", 1.5f))
 
     private val letters = listOf(
         "qwertyuiop".mapIndexed { i, c -> Key(c.toString(), hint = ((i + 1) % 10).toString()) },
@@ -86,16 +87,16 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
 
     // MARK: - Geometry
 
-    private val toolbarH = 52 * d
-    private val rowH = 56 * d
-    private val sidePad = 3 * d
-    private val bottomPad = 6 * d
-    private val gapX = 3.5f * d
-    private val gapY = 5 * d
+    // Gboard's proportions: 46 dp keys, 6 dp between keys, 12 dp between rows, 4 dp at the sides.
+    private val toolbarH = 48 * d
+    private val rowH = 58 * d
+    private val sidePad = 4 * d
+    private val bottomPad = 8 * d
+    private val gapX = 3 * d
+    private val gapY = 6 * d
     private var placed = listOf<Placed>()
     private val voiceButton = RectF()
     private val settingsButton = RectF()
-    private val hideButton = RectF()
     private val deleteWordButton = RectF()
     private val pasteButton = RectF()
 
@@ -122,11 +123,11 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
         placed = out
         val t = toolbarH / 2
         val s = 19 * d // half a toolbar button
-        voiceButton.set(sidePad + 8 * d, t - s, sidePad + 108 * d, t + s)
-        var right = width - sidePad - 8 * d
-        for (r in listOf(hideButton, settingsButton, deleteWordButton, pasteButton)) {
+        voiceButton.set(sidePad + 6 * d, t - s, sidePad + 102 * d, t + s)
+        var right = width - sidePad - 6 * d
+        for (r in listOf(settingsButton, deleteWordButton, pasteButton)) {
             r.set(right - 2 * s, t - s, right, t + s)
-            right -= 2 * s + 8 * d
+            right -= 2 * s + 10 * d
         }
         invalidate()
     }
@@ -165,7 +166,7 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
 
     private fun drawToolbar(c: Canvas) {
         val r = 14 * d
-        look.lift(c, voiceButton, r, look.key, 3f)
+        look.lift(c, voiceButton, r, look.key, 2f)
         look.mic(c, voiceButton.left + 22 * d, voiceButton.centerY(), look.text, 0.85f)
         label.color = look.text
         label.textSize = 14 * d
@@ -173,34 +174,33 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
         label.textAlign = Paint.Align.LEFT
         c.drawText("Voice", voiceButton.left + 38 * d, voiceButton.centerY() + 5 * d, label)
         label.textAlign = Paint.Align.CENTER
-        for (b in listOf(pasteButton, deleteWordButton, settingsButton, hideButton)) look.lift(c, b, r, look.key, 3f)
+        // Like Gboard, the toolbar icons sit flat; a soft circle shows under your finger.
+        toolbarDown?.let { look.press(c, it, it.height() / 2, look.bg, 2f) }
         look.clipboard(c, pasteButton.centerX(), pasteButton.centerY(), look.text)
         look.deleteWord(c, deleteWordButton.centerX(), deleteWordButton.centerY(), look.text)
         look.sliders(c, settingsButton.centerX(), settingsButton.centerY(), look.text)
-        look.chevronDown(c, hideButton.centerX(), hideButton.centerY(), look.text)
     }
 
 
-    private fun isFunction(k: Key) = k.id in setOf("shift", "del", "sym", "abc", "more", ",", ".", "voice", "lang")
+    private fun isFunction(k: Key) = k.id in setOf("shift", "del", "sym", "abc", "more", "lang")
 
     private fun drawKey(c: Canvas, p: Placed) {
         val k = p.key
         val r = p.rect
-        val radius = 12 * d
+        val radius = 7 * d
         val fill = when {
             k.id == "enter" -> look.accent
             isFunction(k) -> look.fn
             else -> look.key
         }
         // Keys sit raised; the one under your finger sinks in.
-        if (pressed === p) look.press(c, r, radius, fill, 2.5f) else look.lift(c, r, radius, fill, 2.5f)
+        if (pressed === p) look.press(c, r, radius, fill, 2f) else look.lift(c, r, radius, fill, 1.5f)
 
         val cx = r.centerX(); val cy = r.centerY()
         when (k.id) {
             "shift" -> look.shift(c, cx, cy, look.text, shift == Shift.ON, shift == Shift.LOCK)
             "del" -> look.backspace(c, cx, cy, look.text)
             "enter" -> look.enter(c, cx, cy, look.onAccent, enter)
-            "voice" -> look.mic(c, cx, cy, look.text)
             "lang" -> look.globe(c, cx, cy, look.text)
             "space" -> if (page == Page.LETTERS) {
                 // Which language the letters are in, quietly on the space bar like Gboard.
@@ -280,7 +280,7 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
                 val i = e.actionIndex
                 val x = e.getX(i); val y = e.getY(i)
                 if (y < toolbarH) {
-                    if (e.actionMasked == MotionEvent.ACTION_DOWN) toolbarTap(x, y)
+                    if (e.actionMasked == MotionEvent.ACTION_DOWN) toolbarPress(x, y)
                     return true
                 }
                 // Fast typing: a second finger landing commits the first key straight away.
@@ -299,12 +299,13 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (toolbarDown != null && e.actionMasked == MotionEvent.ACTION_UP) return toolbarRelease(e.x, e.y)
                 if (e.getPointerId(e.actionIndex) != activePointer) return true
                 cancelTimers()
                 pressed?.let { if (!consumed && it.key.id != "del") fire(it) }
                 release()
             }
-            MotionEvent.ACTION_CANCEL -> { cancelTimers(); release() }
+            MotionEvent.ACTION_CANCEL -> { cancelTimers(); release(); toolbarDown = null }
         }
         return true
     }
@@ -333,15 +334,39 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
         main.removeCallbacks(repeatDelete)
     }
 
-    private fun toolbarTap(x: Float, y: Float) {
+    // Toolbar buttons act when you lift your finger; holding delete-word clears the whole text box.
+    private var toolbarDown: RectF? = null
+    private var cleared = false
+    private val clearAll = Runnable {
+        if (toolbarDown !== deleteWordButton) return@Runnable
+        cleared = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        actions.onClearAll()
+    }
+
+    private fun toolbarPress(x: Float, y: Float) {
+        val hit = listOf(voiceButton, pasteButton, deleteWordButton, settingsButton)
+            .firstOrNull { RectF(it).apply { inset(-6 * d, -6 * d) }.contains(x, y) } ?: return
         buzz()
-        when {
-            voiceButton.contains(x, y) -> actions.onVoiceMode()
-            settingsButton.contains(x, y) -> actions.onSettings()
-            hideButton.contains(x, y) -> actions.onHide()
-            deleteWordButton.contains(x, y) -> actions.onDeleteWord()
-            pasteButton.contains(x, y) -> actions.onPaste()
+        toolbarDown = hit
+        cleared = false
+        if (hit === deleteWordButton) main.postDelayed(clearAll, 500)
+        invalidate()
+    }
+
+    private fun toolbarRelease(x: Float, y: Float): Boolean {
+        val hit = toolbarDown
+        toolbarDown = null
+        main.removeCallbacks(clearAll)
+        invalidate()
+        if (hit == null || !RectF(hit).apply { inset(-12 * d, -12 * d) }.contains(x, y)) return true
+        when (hit) {
+            voiceButton -> actions.onVoiceMode()
+            settingsButton -> actions.onSettings()
+            deleteWordButton -> if (!cleared) actions.onDeleteWord()
+            pasteButton -> actions.onPaste()
         }
+        return true
     }
 
     private fun fire(p: Placed) {
@@ -359,7 +384,6 @@ class KeyboardView(context: Context, private val actions: Actions) : View(contex
             "sym" -> setPage(Page.SYMBOLS)
             "abc" -> setPage(Page.LETTERS)
             "more" -> setPage(Page.MORE)
-            "voice" -> actions.onVoiceMode()
             "lang" -> toggleLanguage()
             "enter" -> actions.onEnter()
             "space" -> {

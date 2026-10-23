@@ -3,10 +3,7 @@
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".MurmurApp"
@@ -41,13 +38,11 @@
                 android:resource="@xml/method" />
         </service>
 
-        <!-- Shows the floating Murmur button above your keyboard and types the text into the
-             focused field. Records only while you hold the button (as a microphone foreground service). -->
+        <!-- Send helper: presses a chat app's own send button when you tap Send in voice mode. -->
         <service
             android:name=".MurmurService"
             android:exported="true"
-            android:foregroundServiceType="microphone"
-            android:label="Murmur voice typing"
+            android:label="Murmur send button"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

@@ -199,7 +199,21 @@ class MurmurKeyboard : InputMethodService(), KeyboardView.Actions, VoicePanelVie
         startListening()
     }
 
-    override fun onHide() = requestHideSelf(0)
+    /** Clears the whole text box (holding delete-word). Words still on their way are dropped. */
+    override fun onClearAll() {
+        val ic = currentInputConnection ?: return
+        val wasListening = session != null
+        session?.cancel()
+        session = null
+        shownPhrase = -1
+        ic.finishComposingText()
+        val before = ic.getTextBeforeCursor(100_000, 0)?.length ?: 0
+        val after = ic.getTextAfterCursor(100_000, 0)?.length ?: 0
+        ic.beginBatchEdit()
+        if (!(ic.performContextMenuAction(android.R.id.selectAll) && ic.commitText("", 1))) ic.deleteSurroundingText(before, after)
+        ic.endBatchEdit()
+        if (wasListening) startListening()
+    }
 
     override fun onSettings() {
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -236,7 +250,7 @@ class MurmurKeyboard : InputMethodService(), KeyboardView.Actions, VoicePanelVie
         }
         val test = LiveSession.testAudio?.also { LiveSession.testAudio = null }
         val base = ++sessions * 100_000
-        val s = if (test != null) LiveSession(this, this, Session.WavSource(test), base) else LiveSession(this, this, firstPhrase = base)
+        val s = if (test != null) LiveSession(this, this, WavSource(test), base) else LiveSession(this, this, firstPhrase = base)
         if (!s.start()) {
             v.state = VoicePanelView.State.NO_MIC
             return

@@ -1,6 +1,6 @@
 # Murmur
 
-Voice typing for Mac and Android, powered by Whisper. Hold a key (Mac) or tap a text box (Android), speak, and your words are typed for you. It runs on-device by default; optionally it can use OpenAI's cloud transcription with your own API key, with automatic fallback to the on-device model.
+Voice typing for Mac and Android, powered by Whisper. Hold a key (Mac) or tap a text box with the Murmur Keyboard (Android), speak, and your words are typed for you. It runs on-device by default; optionally it can use OpenAI's cloud transcription with your own API key, with automatic fallback to the on-device model.
 
 ## Mac app (`mac/`)
 
@@ -27,11 +27,11 @@ Kotlin app for Android 10+, built for the Galaxy Z Fold 7. Styled with the "Pebb
 - **Murmur Keyboard**, a Gboard-style keyboard with two modes:
   - **Voice mode:** no keys. Tap any text box and it starts listening; your words appear live as you speak. The waveform button pauses (green listening, red paused), and **Send** finishes and sends (search/go, or taps the app's send button in chat apps like WhatsApp).
   - **Typing mode:** a regular QWERTY or **Hebrew** keyboard (globe key switches) with number hints, caps lock, symbols and double-space period.
-  - Toolbar: **clipboard** (last 10 copies, up to 10 pinned, and snippets) and **delete word**.
+  - Toolbar: **clipboard** (last 10 copies, up to 10 pinned, and snippets) and **delete word** (tap: one word; hold: clear the whole text box). Sized and spaced like Gboard.
 - **Snippets:** say a phrase like "my address" and the full text is typed.
 - **AI cleanup** (optional, needs an OpenAI key): removes filler words, fixes grammar and punctuation, keeps only self-corrections.
 - **Hebrew and Yiddish terms** said in English (Aryeh, mikvah, Shabbos…) are corrected on the on-device models.
-- **Floating bubble** for use with other keyboards: hold to talk above the keyboard, remembered position per app.
+- A small accessibility service (optional) lets **Send** press a chat app's own send button (WhatsApp, Messages).
 - Engine: **Cloud · OpenAI** (your own key), or Whisper on the phone (tiny/base/small, downloaded in the app; none is bundled, so the APK is ~35 MB) via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with voice detection for live, chunked transcription.
 
 **Build:**
