@@ -9,6 +9,8 @@ final class Engine {
     var onStatus: (String) -> Void = { _ in }
     private(set) var status = "Starting…" { didSet { onStatus(status) } }
     private(set) var isReady = false
+    /// Why the last cloud request fell back to the local model, or nil if the cloud worked.
+    private(set) var cloudError: String?
 
     private var process: Process?
     private var input: FileHandle?
@@ -68,6 +70,11 @@ final class Engine {
         send(["cmd": "load", "model": model])
     }
 
+    /// Opens a connection to OpenAI as you start talking, so the first chunk doesn't wait for it.
+    func warm() {
+        send(["cmd": "warm"])
+    }
+
     /// Chunks sharing a `session` are one recording; the engine uses earlier chunks as context.
     func transcribe(_ url: URL, language: String, session: Int,
                     completion: @escaping (Result<String, Error>) -> Void) {
@@ -76,6 +83,8 @@ final class Engine {
         pending[id] = completion
         var req: [String: Any] = ["cmd": "transcribe", "id": id, "path": url.path, "session": session]
         if !language.isEmpty { req["language"] = language }
+        let s = Settings.shared
+        if s.useCloud { req["cloud"] = ["key": s.apiKey, "model": s.cloudModel] }
         send(req)
 
         // Never leave the UI stuck if something goes wrong.
@@ -119,6 +128,8 @@ final class Engine {
             isReady = true
             status = "Ready · \(msg["model"] as? String ?? model) model"
         case "result":
+            if msg["via"] as? String == "cloud" { cloudError = nil }
+            if let reason = msg["fallback"] as? String { cloudError = reason }
             if let id, let cb = pending.removeValue(forKey: id) {
                 cb(.success(msg["text"] as? String ?? ""))
             }

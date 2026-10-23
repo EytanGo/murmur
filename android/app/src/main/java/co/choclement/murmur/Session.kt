@@ -8,6 +8,7 @@ import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Future
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
 
@@ -32,7 +33,7 @@ class Session(
     }
 
     private val main = Handler(Looper.getMainLooper())
-    private val parts = ConcurrentHashMap<Int, String>()
+    private val parts = ConcurrentHashMap<Int, Future<String>>()
     private var audio = FloatArray(Transcriber.RATE * 30) // everything recorded so far
     @Volatile private var running = false
     @Volatile private var cancelled = false
@@ -46,6 +47,7 @@ class Session(
 
     fun start(): Boolean {
         if (!source.start()) return false
+        Cloud.warmUp()
         running = true
         recorder = thread(name = "murmur-mic") { record() }
         return true
@@ -99,9 +101,7 @@ class Session(
 
     private fun submit(samples: FloatArray) {
         val index = chunks++
-        Transcriber.worker.execute {
-            if (!cancelled) parts[index] = Transcriber.decodeNow(samples, context)
-        }
+        if (!cancelled) parts[index] = Transcriber.decodeFinal(samples, context)
     }
 
     /** Stops listening and delivers the full transcript on the main thread. */
@@ -113,12 +113,9 @@ class Session(
             if (chunks == 0 && totalSamples > Transcriber.RATE / 2) {
                 submit(audio.copyOf(totalSamples))
             }
-            val count = chunks
-            // The worker runs jobs in order, so this runs after every chunk is done.
-            Transcriber.worker.execute {
-                val text = join((0 until count).mapNotNull { parts[it] }.filter { it.isNotBlank() })
-                if (!cancelled) main.post { onText(text) }
-            }
+            val texts = (0 until chunks).mapNotNull { runCatching { parts[it]?.get() }.getOrNull() }
+            val text = join(texts.filter { it.isNotBlank() })
+            if (!cancelled) main.post { onText(text) }
         }
     }
 

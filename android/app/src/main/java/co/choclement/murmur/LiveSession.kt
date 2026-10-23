@@ -49,6 +49,7 @@ class LiveSession(
 
     fun start(): Boolean {
         if (!source.start()) return false
+        Cloud.warmUp()
         running = true
         recorder = thread(name = "murmur-live") { record() }
         return true
@@ -61,8 +62,24 @@ class LiveSession(
             recorder?.join()
             // Unlike the bubble, there's no "transcribe everything" fallback here: voice mode starts
             // listening on every tap, and Whisper invents words from silence.
-            Transcriber.worker.execute { if (!cancelled) main.post(onDone) }
+            main.post { whenDone = onDone; deliver() }
         }
+    }
+
+    // Finished phrases can come back out of order (cloud requests run side by side), so they're
+    // held here and handed over strictly in order. Main thread only.
+    private val finished = HashMap<Int, String>()
+    private var nextToDeliver = firstPhrase
+    private var whenDone: (() -> Unit)? = null
+
+    private fun deliver() {
+        if (cancelled) return
+        while (nextToDeliver in finished) {
+            val phrase = nextToDeliver++
+            listener.onFinal(phrase, finished.remove(phrase)!!)
+        }
+        // phrases is final once the recorder has stopped, which is when whenDone gets set.
+        if (nextToDeliver == phrases) whenDone?.let { whenDone = null; it() }
     }
 
     /** Stops immediately; whatever is still being transcribed is dropped. */
@@ -119,12 +136,16 @@ class LiveSession(
         val phrase = phrases++
         lastEnd = to
         lastPartialAt = to
-        val samples = if (to > from) audio.copyOfRange(from, to) else return
-        pending.incrementAndGet()
-        Transcriber.worker.execute {
-            val text = if (cancelled) "" else Transcriber.decodeNow(samples, context)
+        if (to <= from || cancelled) {
+            main.post { finished[phrase] = ""; deliver() }
+            return
+        }
+        val result = Transcriber.decodeFinal(audio.copyOfRange(from, to), context)
+        pending.incrementAndGet() // hold the live previews until this phrase's text is in
+        thread(name = "murmur-phrase") {
+            val text = runCatching { result.get() }.getOrDefault("")
             pending.decrementAndGet()
-            if (!cancelled) main.post { listener.onFinal(phrase, text) }
+            main.post { finished[phrase] = text; deliver() }
         }
     }
 

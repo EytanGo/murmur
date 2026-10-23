@@ -1,6 +1,9 @@
 package co.choclement.murmur
 
 import android.Manifest
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.os.Build
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
@@ -16,11 +19,14 @@ import android.widget.FrameLayout
  *  - Voice: no keys at all. Tapping a text box starts listening right away, your words appear
  *    in the box as you speak, and Send finishes up and sends (like pressing enter / tapping send).
  */
-class MurmurKeyboard : InputMethodService(), KeyboardView.Actions, VoicePanelView.Actions, LiveSession.Listener {
+class MurmurKeyboard : InputMethodService(), KeyboardView.Actions, VoicePanelView.Actions, ClipboardPanelView.Actions,
+    LiveSession.Listener {
 
     private lateinit var container: FrameLayout
     private var keys: KeyboardView? = null
     private var voice: VoicePanelView? = null
+    private var clips: ClipboardPanelView? = null
+    private var showingClips = false
 
     private var session: LiveSession? = null
     private val voiceMode get() = Prefs.imeMode == "voice"
@@ -33,16 +39,35 @@ class MurmurKeyboard : InputMethodService(), KeyboardView.Actions, VoicePanelVie
     private var justSentAt = 0L
     private var sessions = 0          // each session numbers its phrases from sessions * 100 000
 
+    private val clipboard by lazy { getSystemService(ClipboardManager::class.java) }
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { saveClip() }
+
     override fun onCreate() {
         super.onCreate()
         Prefs.init(this)
         Transcriber.load(this)
+        // As your keyboard, Murmur may read the clipboard, so it can keep a history of what you copy.
+        clipboard?.addPrimaryClipChangedListener(clipListener)
+    }
+
+    override fun onDestroy() {
+        clipboard?.removePrimaryClipChangedListener(clipListener)
+        super.onDestroy()
+    }
+
+    /** Adds the current clipboard to the history, skipping things apps mark as sensitive (passwords). */
+    private fun saveClip() {
+        val clip = runCatching { clipboard?.primaryClip }.getOrNull() ?: return
+        if (Build.VERSION.SDK_INT >= 33 && clip.description.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true) return
+        val text = clip.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString() ?: return
+        Clips.add(text)
     }
 
     override fun onCreateInputView(): View {
         container = FrameLayout(this)
         keys = KeyboardView(this, this)
         voice = VoicePanelView(this, this)
+        clips = ClipboardPanelView(this, this)
         showMode()
         return container
     }
@@ -52,11 +77,20 @@ class MurmurKeyboard : InputMethodService(), KeyboardView.Actions, VoicePanelVie
     private fun showMode() {
         if (!::container.isInitialized) return
         container.removeAllViews()
-        container.addView(if (voiceMode) voice else keys)
+        container.addView(if (showingClips) clips else if (voiceMode) voice else keys)
+        // The system bar under the keyboard takes the same soft color as the panel above it.
+        val look = Look(this)
+        window.window?.let { w ->
+            w.navigationBarColor = if (!showingClips && voiceMode) look.key else look.bg
+            @Suppress("DEPRECATION")
+            w.decorView.systemUiVisibility = if (look.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        }
     }
 
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        showingClips = false
+        saveClip() // in case something was copied while Murmur wasn't running
         keys?.enter = enterKind(info)
         keys?.setPage(KeyboardView.Page.LETTERS)
         updateShift()
@@ -101,6 +135,48 @@ class MurmurKeyboard : InputMethodService(), KeyboardView.Actions, VoicePanelVie
             ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
             ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
         }
+    }
+
+    /** Opens the clipboard: pinned clips, the last 10 copies, and snippets. Listening pauses meanwhile. */
+    override fun onPaste() {
+        stopListening {}
+        saveClip()
+        clips?.refresh()
+        showingClips = true
+        showMode()
+    }
+
+    override fun onInsert(text: String) {
+        currentInputConnection?.finishComposingText()
+        currentInputConnection?.commitText(text, 1)
+        onCloseClipboard()
+    }
+
+    override fun onCloseClipboard() {
+        showingClips = false
+        showMode()
+        if (!voiceMode) updateShift()
+    }
+
+    /**
+     * Deletes the word before the cursor, with any punctuation stuck to it ("there." goes in one
+     * tap), or the selection. A line break on its own is deleted by itself.
+     */
+    override fun onDeleteWord() {
+        val ic = currentInputConnection ?: return
+        if (shownPhrase != -1) return
+        if (!ic.getSelectedText(0).isNullOrEmpty()) { ic.commitText("", 1); return }
+        val before = ic.getTextBeforeCursor(200, 0)?.toString().orEmpty()
+        if (before.isEmpty()) return onDelete()
+        var n = before.length
+        if (before[n - 1] == '\n') n--
+        else {
+            fun wordChar(c: Char) = c.isLetterOrDigit() || c in "'’-"
+            while (n > 0 && before[n - 1].isWhitespace() && before[n - 1] != '\n') n--
+            while (n > 0 && !wordChar(before[n - 1]) && !before[n - 1].isWhitespace()) n--
+            while (n > 0 && wordChar(before[n - 1])) n--
+        }
+        ic.deleteSurroundingText(before.length - n, 0)
     }
 
     override fun onSpace() {

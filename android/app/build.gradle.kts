@@ -18,8 +18,8 @@ android {
         applicationId = "co.choclement.murmur"
         minSdk = 29
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 10
+        versionName = "1.9"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -52,10 +52,12 @@ dependencies {
     implementation(files("libs/sherpa-onnx.aar"))
 }
 
-// Every release build replaces the shared copies: ~/Desktop/Murmur/Murmur.apk and Google Drive.
+// Every release build replaces the shared copies: ~/Desktop/Murmur/Murmur.apk and Google Drive
+// (named Murmur-<version>-build<code>.apk there).
 val publishApk by tasks.registering(Exec::class) {
     commandLine(rootProject.file("publish.sh").path,
-        layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile.path)
+        layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile.path,
+        android.defaultConfig.versionName, android.defaultConfig.versionCode.toString())
 }
 afterEvaluate {
     tasks.named("assembleRelease") { finalizedBy(publishApk) }

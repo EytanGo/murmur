@@ -7,6 +7,7 @@ import SwiftUI
 final class SettingsWindow {
     private var window: NSWindow?
     var engineStatus: () -> String = { "" }
+    var cloudStatus: () -> String? = { nil }
 
     func show() {
         if window == nil {
@@ -15,7 +16,7 @@ final class SettingsWindow {
                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
             w.title = "Murmur"
             w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: SettingsView(engineStatus: engineStatus))
+            w.contentView = NSHostingView(rootView: SettingsView(engineStatus: engineStatus, cloudStatus: cloudStatus))
             w.center()
             window = w
         }
@@ -27,10 +28,12 @@ final class SettingsWindow {
 struct SettingsView: View {
     @ObservedObject var s = Settings.shared
     let engineStatus: () -> String
+    let cloudStatus: () -> String?
 
     @State private var micOK = false
     @State private var axOK = false
     @State private var status = ""
+    @State private var cloudError: String?
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -51,7 +54,29 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Model", selection: $s.model) {
+                Picker("Transcription", selection: $s.engine) {
+                    Text("On this Mac").tag("local")
+                    Text("Cloud · OpenAI").tag("cloud")
+                }
+                .pickerStyle(.segmented)
+                if s.engine == "cloud" {
+                    SecureField("OpenAI API key", text: $s.apiKey, prompt: Text("sk-…"))
+                    Picker("Cloud model", selection: $s.cloudModel) {
+                        ForEach(Settings.cloudModels, id: \.id) { Text($0.label).tag($0.id) }
+                    }
+                }
+            } footer: {
+                Text(s.engine == "local"
+                     ? "Private: your speech never leaves this Mac."
+                     : s.apiKey.isEmpty
+                        ? "Paste your key from platform.openai.com › API keys."
+                        : cloudError.map { "Last dictation used the local model instead: \($0)" }
+                            ?? "Your speech is sent to OpenAI. With no internet, the local model below takes over.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Picker(s.engine == "cloud" ? "Local model (fallback)" : "Model", selection: $s.model) {
                     ForEach(Settings.models, id: \.id) { Text($0.label).tag($0.id) }
                 }
                 Picker("Language", selection: $s.language) {
@@ -105,6 +130,7 @@ struct SettingsView: View {
         micOK = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         axOK = AXIsProcessTrusted()
         status = engineStatus()
+        cloudError = cloudStatus()
     }
 
     private func open(_ pane: String) {

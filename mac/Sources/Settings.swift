@@ -11,6 +11,11 @@ final class Settings: ObservableObject {
     @Published var model: String { didSet { d.set(model, forKey: "model") } }
     @Published var language: String { didSet { d.set(language, forKey: "language") } } // "" = auto
     @Published var sounds: Bool { didSet { d.set(sounds, forKey: "sounds") } }
+    @Published var engine: String { didSet { d.set(engine, forKey: "engine") } }     // "local" | "cloud"
+    @Published var apiKey: String { didSet { d.set(apiKey, forKey: "apiKey") } }     // OpenAI
+    @Published var cloudModel: String { didSet { d.set(cloudModel, forKey: "cloudModel") } }
+
+    var useCloud: Bool { engine == "cloud" && !apiKey.trimmingCharacters(in: .whitespaces).isEmpty }
 
     /// True while the settings window is capturing a new shortcut.
     @Published var isRecordingShortcut = false
@@ -26,13 +31,24 @@ final class Settings: ObservableObject {
             "model": "small",
             "language": "",
             "sounds": true,
+            "engine": "local",
+            "apiKey": "",
+            "cloudModel": "gpt-4o-transcribe",
         ])
         keyCode = d.integer(forKey: "keyCode")
         mode = d.string(forKey: "mode") ?? "hold"
         model = d.string(forKey: "model") ?? "small"
         language = d.string(forKey: "language") ?? ""
         sounds = d.bool(forKey: "sounds")
+        engine = d.string(forKey: "engine") ?? "local"
+        apiKey = d.string(forKey: "apiKey") ?? ""
+        cloudModel = d.string(forKey: "cloudModel") ?? "gpt-4o-transcribe"
     }
+
+    static let cloudModels: [(id: String, label: String)] = [
+        ("gpt-4o-transcribe", "Best accuracy (~$0.006/min)"),
+        ("gpt-4o-mini-transcribe", "Half the price, nearly as good"),
+    ]
 
     static let models: [(id: String, label: String)] = [
         ("tiny", "Tiny · fastest"),

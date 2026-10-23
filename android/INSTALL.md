@@ -1,6 +1,6 @@
 # Murmur for Android: install on your Galaxy Z Fold 7
 
-Murmur adds a small dark button just above your keyboard (Gboard stays your keyboard). Hold it, speak, let go: your words are typed where your cursor is. Whisper runs on the phone itself, so nothing is sent anywhere and it works offline.
+Murmur adds a small dark button just above your keyboard (Gboard stays your keyboard). Hold it, speak, let go: your words are typed where your cursor is. Whisper runs on the phone itself (download a model under Settings › Phone model), so nothing is sent anywhere and it works offline. Or switch Settings › Transcription to Cloud · OpenAI with your own API key for the fastest, most accurate results.
 
 ## 1. Get the app onto the phone (2 minutes)
 
@@ -38,7 +38,7 @@ Murmur includes its own keyboard, styled like Gboard, with two modes. You don't 
 - **Cancel**: while holding, slide your finger away (the bubble turns red), then let go.
 - **Move it**: touch the bubble and slide right away, in any direction. Murmur remembers the spot for each app separately (e.g. off WhatsApp's voice-note button without changing other apps). In chat apps it starts above the whole chat bar. Settings › Bubble position has the default side and "Reset all positions".
 - **Tap mode**: in Murmur's settings, choose "Tap to start, tap again to type".
-- **More accuracy**: Settings › Accuracy › **Small** (375 MB download, slower). **Tiny** (105 MB) is fastest but makes more mistakes. **Base** is built in and is the best balance.
+- **Phone models**: Settings › Phone model. **Base** (160 MB) is the best balance, **Small** (375 MB) is most accurate but slower, **Tiny** (105 MB) is fastest but makes more mistakes. None is built in, which keeps the app small.
 - **Language**: Auto-detect, or pick one (English, Hebrew, …) for slightly better accuracy and speed.
 - If a box won't accept the text, it's copied instead. Long-press in the box and tap **Paste**. "Copy last dictation" in the app also gets it back.
 

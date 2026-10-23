@@ -17,8 +17,31 @@ object Prefs {
         set(v) = sp.edit().putString("mode", v).apply()
 
     var model: String
-        get() = sp.getString("model", Models.BUILT_IN)!!
+        get() = sp.getString("model", "base")!!
         set(v) = sp.edit().putString("model", v).apply()
+
+    /** "local" = Whisper on the phone, "cloud" = OpenAI with your API key. */
+    var engine: String
+        get() = sp.getString("engine", "local")!!
+        set(v) = sp.edit().putString("engine", v).apply()
+
+    /** Your OpenAI API key. Stays on this phone and is only sent to OpenAI. */
+    var apiKey: String
+        get() = sp.getString("apiKey", "")!!
+        set(v) = sp.edit().putString("apiKey", v).apply()
+
+    var cloudModel: String
+        get() = sp.getString("cloudModel", "gpt-4o-transcribe")!!
+        set(v) = sp.edit().putString("cloudModel", v).apply()
+
+    /** AI cleanup of each dictation (needs the OpenAI key). */
+    var aiCleanup: Boolean
+        get() = sp.getBoolean("aiCleanup", false)
+        set(v) = sp.edit().putBoolean("aiCleanup", v).apply()
+
+    /** Stored lists (clipboard history, pins, snippets) as JSON. */
+    fun json(name: String): String = sp.getString(name, "[]")!!
+    fun setJson(name: String, v: String) = sp.edit().putString(name, v).apply()
 
     /** "" = auto-detect. */
     var language: String
@@ -29,6 +52,11 @@ object Prefs {
     var imeMode: String
         get() = sp.getString("imeMode", "voice")!!
         set(v) = sp.edit().putString("imeMode", v).apply()
+
+    /** Letters on the typing keyboard: "en" (QWERTY) or "he" (Hebrew). */
+    var keyboardLanguage: String
+        get() = sp.getString("keyboardLanguage", "en")!!
+        set(v) = sp.edit().putString("keyboardLanguage", v).apply()
 
     var haptics: Boolean
         get() = sp.getBoolean("haptics", true)

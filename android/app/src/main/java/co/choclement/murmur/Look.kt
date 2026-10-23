@@ -2,26 +2,87 @@ package co.choclement.murmur
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.Typeface
 
-/** Colors and hand-drawn icons for the Murmur keyboard, in the style of Gboard. */
-class Look(context: Context) {
+/**
+ * The Pebble look: soft sage surfaces that are raised (buttons, cards) or pressed in (fields,
+ * selected options), Bricolage Grotesque for titles and Nunito for text. Colors, fonts, the
+ * soft-shadow drawing, and the hand-drawn icons all live here.
+ */
+class Look(val context: Context) {
     val d = context.resources.displayMetrics.density
     val dark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
-    val bg = if (dark) Color.rgb(27, 27, 31) else Color.rgb(239, 241, 246)
-    val key = if (dark) Color.rgb(58, 59, 63) else Color.WHITE
-    val fn = if (dark) Color.rgb(46, 56, 74) else Color.rgb(214, 226, 247)
-    val accent = Color.rgb(168, 199, 250)
-    val onAccent = Color.rgb(4, 30, 73)
-    val text = if (dark) Color.rgb(232, 234, 237) else Color.rgb(31, 31, 31)
-    val muted = if (dark) Color.rgb(154, 160, 166) else Color.rgb(95, 99, 104)
-    val pressedTint = if (dark) Color.argb(60, 255, 255, 255) else Color.argb(40, 0, 0, 0)
-    val preview = if (dark) Color.rgb(80, 82, 88) else Color.WHITE
+    val bg = if (dark) Color.rgb(0x15, 0x1A, 0x16) else Color.rgb(0xE6, 0xEB, 0xE3)
+    val key = if (dark) Color.rgb(0x1E, 0x25, 0x20) else Color.rgb(0xF4, 0xF6, 0xF1)   // raised surface
+    val fn = if (dark) Color.rgb(0x2A, 0x36, 0x2D) else Color.rgb(0xDC, 0xE8, 0xD9)    // function keys, chips
+    val accent = Color.rgb(0x3E, 0x6B, 0x48)                                             // moss green
+    val accentDeep = Color.rgb(0x2C, 0x4F, 0x34)
+    val onAccent = Color.WHITE
+    val clay = Color.rgb(0xB4, 0x47, 0x2F)                                               // paused
+    val apricot = Color.rgb(0xF2, 0xA6, 0x5A)                                            // Send
+    val peach = if (dark) Color.rgb(0x3A, 0x2E, 0x22) else Color.rgb(0xF7, 0xE3, 0xCC)  // pinned, AI cleanup
+    val text = if (dark) Color.rgb(0xE8, 0xED, 0xE6) else Color.rgb(0x1F, 0x2A, 0x22)
+    val muted = if (dark) Color.rgb(0xA4, 0xB0, 0xA6) else Color.rgb(0x56, 0x63, 0x5A)
+    val pressedTint = if (dark) Color.argb(50, 255, 255, 255) else Color.argb(28, 31, 42, 34)
+    val preview = key
+    private val shade = if (dark) Color.argb(115, 0, 0, 0) else Color.argb(36, 31, 42, 34)
+    private val light = if (dark) Color.argb(10, 255, 255, 255) else Color.WHITE
+
+    /** Bricolage Grotesque, for titles and big labels. */
+    fun display(weight: Int = 800) = font("bricolage.ttf", weight)
+
+    /** Nunito, for everything else. */
+    fun body(weight: Int = 700) = font("nunito.ttf", weight)
+
+    private fun font(file: String, weight: Int) = fonts.getOrPut("$file$weight") {
+        runCatching {
+            Typeface.Builder(context.assets, "fonts/$file").setFontVariationSettings("'wght' $weight").build()
+        }.getOrDefault(Typeface.DEFAULT_BOLD)
+    }
+
+    private val soft = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    /** A raised shape: soft shadow below-right, a highlight above-left. [depth] in dp. */
+    fun lift(c: Canvas, r: RectF, radius: Float, fill: Int, depth: Float = 4f) {
+        val off = depth * d * 0.8f
+        soft.style = Paint.Style.FILL
+        soft.color = fill
+        soft.setShadowLayer(depth * 2 * d, -off, -off, light)
+        c.drawRoundRect(r, radius, radius, soft)
+        soft.setShadowLayer(depth * 2 * d, off, off, shade)
+        c.drawRoundRect(r, radius, radius, soft)
+        soft.clearShadowLayer()
+    }
+
+    /** A pressed-in shape: inner shadow along the top-left, inner highlight along the bottom-right. */
+    fun press(c: Canvas, r: RectF, radius: Float, fill: Int, depth: Float = 3f) {
+        soft.style = Paint.Style.FILL
+        soft.color = fill
+        c.drawRoundRect(r, radius, radius, soft)
+        val off = depth * d
+        c.save()
+        c.clipPath(Path().apply { addRoundRect(r, radius, radius, Path.Direction.CW) })
+        soft.style = Paint.Style.STROKE
+        soft.strokeWidth = off * 2.5f
+        soft.maskFilter = BlurMaskFilter(off * 1.6f, BlurMaskFilter.Blur.NORMAL)
+        for ((color, dx) in listOf(shade to off, light to -off)) {
+            soft.color = color
+            c.drawRoundRect(RectF(r).apply { offset(dx, dx); inset(-off, -off) }, radius + off, radius + off, soft)
+        }
+        soft.maskFilter = null
+        c.restore()
+    }
+
+    companion object {
+        private val fonts = HashMap<String, Typeface>()
+    }
 
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
@@ -98,6 +159,52 @@ class Look(context: Context) {
         val dot = brush(color)
         for (row in 0..1) for (i in 0..4) c.drawCircle(cx - w * 0.64f + i * w * 0.32f, cy - h * 0.4f + row * h * 0.55f, 1.2f * d, dot)
         c.drawLine(cx - w * 0.45f, cy + h * 0.55f, cx + w * 0.45f, cy + h * 0.55f, pen(color, 1.8f))
+    }
+
+    /** Clipboard: a board with a clip on top and two lines of "text". */
+    fun clipboard(c: Canvas, cx: Float, cy: Float, color: Int) {
+        val w = 7.5f * d; val h = 9.5f * d
+        c.drawRoundRect(RectF(cx - w, cy - h, cx + w, cy + h), 2 * d, 2 * d, pen(color, 1.8f))
+        c.drawRoundRect(RectF(cx - w * 0.45f, cy - h - 2 * d, cx + w * 0.45f, cy - h + 3 * d), 1.5f * d, 1.5f * d, brush(color))
+        c.drawLine(cx - w * 0.5f, cy - h * 0.1f, cx + w * 0.5f, cy - h * 0.1f, pen(color, 1.6f))
+        c.drawLine(cx - w * 0.5f, cy + h * 0.4f, cx + w * 0.2f, cy + h * 0.4f, pen(color, 1.6f))
+    }
+
+    /** Delete a whole word: the backspace key with a "W" inside instead of the ×. */
+    fun deleteWord(c: Canvas, cx: Float, cy: Float, color: Int) {
+        val w = 12 * d; val h = 8.5f * d
+        val p = Path().apply {
+            moveTo(cx - w, cy); lineTo(cx - w * 0.45f, cy - h); lineTo(cx + w, cy - h)
+            lineTo(cx + w, cy + h); lineTo(cx - w * 0.45f, cy + h); close()
+        }
+        c.drawPath(p, pen(color, 1.8f))
+        val x = cx + w * 0.22f; val k = 4.2f * d; val t = 3.6f * d
+        c.drawPath(Path().apply {
+            moveTo(x - k, cy - t); lineTo(x - k * 0.5f, cy + t); lineTo(x, cy - t * 0.2f)
+            lineTo(x + k * 0.5f, cy + t); lineTo(x + k, cy - t)
+        }, pen(color, 1.6f))
+    }
+
+    /** The language-switch globe: a circle with a meridian and an equator. */
+    fun globe(c: Canvas, cx: Float, cy: Float, color: Int) {
+        val r = 8.5f * d
+        val p = pen(color, 1.6f)
+        c.drawCircle(cx, cy, r, p)
+        c.drawOval(RectF(cx - r * 0.42f, cy - r, cx + r * 0.42f, cy + r), p)
+        c.drawLine(cx - r, cy, cx + r, cy, p)
+        c.drawLine(cx - r * 0.85f, cy - r * 0.5f, cx + r * 0.85f, cy - r * 0.5f, p)
+        c.drawLine(cx - r * 0.85f, cy + r * 0.5f, cx + r * 0.85f, cy + r * 0.5f, p)
+    }
+
+    /** Settings, Pebble style: two sliders with knobs. */
+    fun sliders(c: Canvas, cx: Float, cy: Float, color: Int) {
+        val s = d * 0.85f
+        fun x(v: Float) = cx + (v - 12) * s
+        fun y(v: Float) = cy + (v - 12) * s
+        val p = pen(color, 2f)
+        c.drawLine(x(4f), y(7f), x(14f), y(7f), p); c.drawLine(x(18f), y(7f), x(20f), y(7f), p)
+        c.drawLine(x(4f), y(17f), x(8f), y(17f), p); c.drawLine(x(12f), y(17f), x(20f), y(17f), p)
+        c.drawCircle(x(16f), y(7f), 2 * s, p); c.drawCircle(x(10f), y(17f), 2 * s, p)
     }
 
     fun gear(c: Canvas, cx: Float, cy: Float, color: Int) {

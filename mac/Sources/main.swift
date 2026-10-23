@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         settingsWindow.engineStatus = { [weak self] in self?.engine.status ?? "" }
+        settingsWindow.cloudStatus = { [weak self] in self?.engine.cloudError }
         engine.start(model: settings.model)
         settings.$model.dropFirst().removeDuplicates()
             .sink { [weak self] in self?.engine.load(model: $0) }
@@ -129,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         failure = nil
         finishing = false
         chunker.reset()
+        if settings.useCloud { engine.warm() }
         if let front = NSWorkspace.shared.frontmostApplication { Self.wake(front) }
         guard recorder.start() else { return }
         state = .recording
@@ -226,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let hint = settings.isHold ? "Hold \(settings.keyName) to dictate" : "Tap \(settings.keyName) to dictate"
-        for line in [engine.status, hint] {
+        for line in [settings.useCloud ? "Cloud · OpenAI (\(settings.cloudModel))" : engine.status, hint] {
             let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
             item.isEnabled = false
             menu.addItem(item)

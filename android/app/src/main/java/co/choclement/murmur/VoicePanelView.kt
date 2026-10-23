@@ -8,7 +8,6 @@ import android.graphics.RectF
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sin
 
@@ -24,6 +23,8 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
         fun onTypingMode()
         fun onHide()
         fun onSettings()
+        fun onPaste()
+        fun onDeleteWord()
     }
 
     enum class State { LISTENING, PAUSED, WORKING, NO_MIC }
@@ -39,125 +40,144 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
         level += (raw - level) * if (raw > level) 0.55f else 0.25f
     }
 
-    private val toolbarH = 44 * d
-    private val panelH = 124 * d
+    private val pad = 16 * d
+    private val toolH = 46 * d
+    private val bigH = 96 * d
+    private val panelH = 14 * d + toolH + 16 * d + bigH + 22 * d
     private val keyboardButton = RectF()
     private val settingsButton = RectF()
     private val hideButton = RectF()
+    private val deleteWordButton = RectF()
+    private val pasteButton = RectF()
     private val pauseButton = RectF()
     private val sendButton = RectF()
     private var pressed: RectF? = null
-
-    private val green = 0xFF1E8E3E.toInt()
-    private val red = 0xFFD93025.toInt()
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) =
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), panelH.toInt())
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        val t = toolbarH / 2
-        keyboardButton.set(7 * d, t - 16 * d, 128 * d, t + 16 * d)
-        hideButton.set(w - 49 * d, t - 18 * d, w - 9 * d, t + 18 * d)
-        settingsButton.set(hideButton.left - 48 * d, hideButton.top, hideButton.left - 8 * d, hideButton.bottom)
-        val bottom = h - 12 * d
-        val gap = 10 * d
-        val side = 12 * d
-        val bw = (w - side * 2 - gap) / 2
-        pauseButton.set(side, bottom - 60 * d, side + bw, bottom)
-        sendButton.set(side + bw + gap, bottom - 60 * d, w - side, bottom)
+        val top = 14 * d
+        keyboardButton.set(pad, top, pad + 124 * d, top + toolH)
+        var right = w - pad
+        for (r in listOf(hideButton, settingsButton, deleteWordButton, pasteButton)) {
+            r.set(right - toolH, top, right, top + toolH)
+            right -= toolH + 8 * d
+        }
+        val bigTop = top + toolH + 16 * d
+        val bw = (w - pad * 2 - 12 * d) / 2
+        pauseButton.set(pad, bigTop, pad + bw, bigTop + bigH)
+        sendButton.set(pad + bw + 12 * d, bigTop, w - pad, bigTop + bigH)
     }
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; color = 0xFFFFFFFF.toInt() }
 
     override fun onDraw(c: Canvas) {
-        c.drawColor(look.bg)
+        c.drawColor(look.key)
+        val t = System.nanoTime() / 1e9
 
-        // Toolbar: back to the keys on the left, settings and hide on the right.
-        val r = keyboardButton.height() / 2
-        paint.color = look.fn
-        c.drawRoundRect(keyboardButton, r, r, paint)
-        look.keyboard(c, keyboardButton.left + 24 * d, keyboardButton.centerY(), look.text)
-        text.color = look.text; text.textSize = 14 * d; text.isFakeBoldText = true; text.textAlign = Paint.Align.LEFT
-        c.drawText("Keyboard", keyboardButton.left + 43 * d, keyboardButton.centerY() + 5 * d, text)
-        text.textAlign = Paint.Align.CENTER; text.isFakeBoldText = false
-        look.gear(c, settingsButton.centerX(), settingsButton.centerY(), look.muted)
-        look.chevronDown(c, hideButton.centerX(), hideButton.centerY(), look.muted)
+        // Toolbar: soft raised squircles on the panel.
+        tool(c, keyboardButton)
+        look.keyboard(c, keyboardButton.left + 26 * d, keyboardButton.centerY(), look.text)
+        text.color = look.text; text.textSize = 14 * d; text.typeface = look.body(800); text.textAlign = Paint.Align.LEFT
+        c.drawText("Keyboard", keyboardButton.left + 46 * d, keyboardButton.centerY() + 5 * d, text)
+        text.textAlign = Paint.Align.CENTER
+        tool(c, pasteButton); look.clipboard(c, pasteButton.centerX(), pasteButton.centerY(), look.text)
+        tool(c, deleteWordButton); look.deleteWord(c, deleteWordButton.centerX(), deleteWordButton.centerY(), look.text)
+        tool(c, settingsButton); look.sliders(c, settingsButton.centerX(), settingsButton.centerY(), look.text)
+        tool(c, hideButton); look.chevronDown(c, hideButton.centerX(), hideButton.centerY(), look.text)
 
-        // Pause / Resume is the live voice animation itself: green while listening, red while paused.
+        // The listen button: moss green and gently breathing while listening, clay when paused.
         val fill = when (state) {
-            State.LISTENING -> green
-            State.WORKING -> look.fn
-            State.PAUSED, State.NO_MIC -> red
+            State.LISTENING -> look.accent
+            State.WORKING -> look.accentDeep
+            State.PAUSED, State.NO_MIC -> look.clay
         }
-        roundButton(c, pauseButton, fill)
+        val breathe = if (state == State.LISTENING) 1f + 0.015f * (1 + sin(t * 2 * Math.PI / 2.4).toFloat()) else 1f
+        c.save()
+        c.scale(breathe, breathe, pauseButton.centerX(), pauseButton.centerY())
+        big(c, pauseButton, fill)
         if (state == State.NO_MIC) {
-            text.color = 0xFFFFFFFF.toInt(); text.textSize = 15 * d; text.isFakeBoldText = true
-            c.drawText("Allow microphone", pauseButton.centerX(), pauseButton.centerY() + 5 * d, text)
-            text.isFakeBoldText = false
+            label(c, pauseButton, "Allow microphone", pauseButton.centerY() + 5 * d)
         } else {
-            drawBars(c, pauseButton, if (state == State.WORKING) look.text else 0xFFFFFFFF.toInt())
+            drawBars(c, pauseButton, t)
+            label(c, pauseButton, when (state) {
+                State.LISTENING -> "Listening · tap to pause"
+                State.WORKING -> "Finishing…"
+                else -> "Paused · tap to resume"
+            }, pauseButton.centerY() + 30 * d)
         }
+        c.restore()
 
-        // Send.
-        roundButton(c, sendButton, look.accent)
-        text.color = look.onAccent; text.textSize = 17 * d; text.isFakeBoldText = true
+        // Send: apricot.
+        big(c, sendButton, look.apricot)
+        val ink = 0xFF1F2A22.toInt()
+        text.color = ink; text.textSize = 19 * d; text.typeface = look.display(800); text.textAlign = Paint.Align.LEFT
         val tw = text.measureText("Send")
-        val startX = sendButton.centerX() - (tw + 26 * d) / 2
-        look.send(c, startX + 9 * d, sendButton.centerY(), look.onAccent)
-        text.textAlign = Paint.Align.LEFT
-        c.drawText("Send", startX + 26 * d, sendButton.centerY() + 6 * d, text)
-        text.textAlign = Paint.Align.CENTER; text.isFakeBoldText = false
+        val startX = sendButton.centerX() - (tw + 32 * d) / 2
+        look.send(c, startX + 10 * d, sendButton.centerY(), ink, 10f)
+        c.drawText("Send", startX + 32 * d, sendButton.centerY() + 7 * d, text)
+        text.textAlign = Paint.Align.CENTER
 
         if (state == State.LISTENING || state == State.WORKING) postInvalidateOnAnimation()
     }
 
-    private fun roundButton(c: Canvas, r: RectF, fill: Int) {
-        paint.color = fill
-        c.drawRoundRect(r, r.height() / 2, r.height() / 2, paint)
-        if (pressed === r) { paint.color = look.pressedTint; c.drawRoundRect(r, r.height() / 2, r.height() / 2, paint) }
+    private fun tool(c: Canvas, r: RectF) {
+        look.lift(c, r, 16 * d, look.bg, 3f)
+        if (pressed === r) { c.drawRoundRect(r, 16 * d, 16 * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = look.pressedTint }) }
     }
 
-    /** The waveform: moves with your voice while listening, a soft wave while finishing, still when paused. */
-    private fun drawBars(c: Canvas, area: RectF, color: Int) {
-        val n = 15
-        val gap = 7.5f * d
-        val bw = 3.2f * d
-        paint.color = color
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = bw
-        val t = System.nanoTime() / 1e9
-        val mid = (n - 1) / 2f
+    private fun big(c: Canvas, r: RectF, fill: Int) {
+        if (pressed === r) look.press(c, r, 30 * d, fill, 4f) else look.lift(c, r, 30 * d, fill, 6f)
+    }
+
+    private fun label(c: Canvas, r: RectF, s: String, y: Float) {
+        text.color = 0xFFFFFFFF.toInt(); text.textSize = 13 * d; text.typeface = look.body(800)
+        c.drawText(s, r.centerX(), y, text)
+    }
+
+    /** Nine soft bars: they ride your voice while listening, ripple while finishing, rest when paused. */
+    private fun drawBars(c: Canvas, area: RectF, t: Double) {
+        val n = 9
+        val gap = 11 * d
+        bar.strokeWidth = 6 * d
+        bar.alpha = if (state == State.PAUSED) 205 else 255
+        val cy = area.centerY() - 10 * d
         for (i in 0 until n) {
-            val env = 1 - abs(i - mid) / (mid + 1) * 0.6f
+            val phase = (t / 1.2 + i * 0.19 / 1.2) * 2 * Math.PI
+            val wave = (0.5 + 0.5 * sin(phase)).toFloat()
             val h = when (state) {
-                State.LISTENING -> {
-                    val wobble = 0.55f + 0.45f * sin(t * 9 + i * 1.7).toFloat()
-                    val idle = 0.12f + 0.08f * sin(t * 3 + i).toFloat()
-                    4 * d + 30 * d * max(idle, level * env * wobble)
-                }
-                State.WORKING -> {
-                    val wave = max(0.0, sin(t * 6 - i * 0.75)).toFloat()
-                    4 * d + 14 * d * wave * wave
-                }
-                else -> 4 * d + 10 * d * env * (0.5f + 0.5f * abs(sin(i * 1.3f)))
+                State.LISTENING -> 6 * d + 24 * d * max(wave * 0.35f, level * (0.45f + 0.55f * wave))
+                State.WORKING -> 6 * d + 14 * d * wave * wave
+                else -> 6 * d
             }
             val x = area.centerX() - (n - 1) * gap / 2 + i * gap
-            c.drawLine(x, area.centerY() - h / 2 + bw / 2, x, area.centerY() + h / 2 - bw / 2, paint)
+            c.drawLine(x, cy - h / 2 + 3 * d, x, cy + h / 2 - 3 * d, bar)
         }
-        paint.strokeWidth = 0f
+    }
+
+    private val repeatDelete: Runnable = object : Runnable {
+        override fun run() {
+            if (pressed !== deleteWordButton) return
+            actions.onDeleteWord()
+            if (Prefs.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            postDelayed(this, 220)
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val x = e.x; val y = e.y
-        val target = listOf(pauseButton, sendButton, keyboardButton, settingsButton, hideButton).firstOrNull {
+        val target = listOf(pauseButton, sendButton, keyboardButton, settingsButton, hideButton, deleteWordButton, pasteButton).firstOrNull {
             RectF(it).apply { inset(-6 * d, -6 * d) }.contains(x, y)
         }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pressed = target
                 if (target != null && Prefs.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                // Delete-word acts on touch and repeats while held.
+                if (target === deleteWordButton) { actions.onDeleteWord(); postDelayed(repeatDelete, 450) }
                 invalidate()
             }
             MotionEvent.ACTION_UP -> {
@@ -170,9 +190,11 @@ class VoicePanelView(context: Context, private val actions: Actions) : View(cont
                     keyboardButton -> actions.onTypingMode()
                     settingsButton -> actions.onSettings()
                     hideButton -> actions.onHide()
+                    pasteButton -> actions.onPaste()
                 }
+                removeCallbacks(repeatDelete)
             }
-            MotionEvent.ACTION_CANCEL -> { pressed = null; invalidate() }
+            MotionEvent.ACTION_CANCEL -> { pressed = null; removeCallbacks(repeatDelete); invalidate() }
         }
         return true
     }

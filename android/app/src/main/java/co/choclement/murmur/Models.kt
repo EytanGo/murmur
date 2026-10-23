@@ -6,17 +6,16 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
 
-/** The Whisper models. Base ships inside the app; the others download once. */
+/**
+ * The on-phone Whisper models. None ships inside the app (that kept it small); each downloads
+ * once. Without one, Murmur uses the cloud only.
+ */
 object Models {
-    const val BUILT_IN = "base"
-
-    data class Model(val id: String, val label: String, val sizeMb: Int) {
-        val bundled get() = id == BUILT_IN
-    }
+    data class Model(val id: String, val label: String, val sizeMb: Int)
 
     val all = listOf(
         Model("tiny", "Tiny · fastest, less accurate", 105),
-        Model("base", "Base · fast and accurate (built in)", 0),
+        Model("base", "Base · fast and accurate", 160),
         Model("small", "Small · most accurate, slower", 375),
     )
 
@@ -26,13 +25,15 @@ object Models {
 
     fun dir(context: Context, id: String) = File(context.filesDir, "models/$id")
 
-    fun isReady(context: Context, id: String) = id == BUILT_IN || File(dir(context, id), ".done").exists()
+    fun isReady(context: Context, id: String) = File(dir(context, id), ".done").exists()
 
-    /** Encoder, decoder and tokens paths. For the built-in model these are asset paths. */
+    /** The model to use: the one picked in settings, else any downloaded one, else none (cloud only). */
+    fun current(context: Context) = Prefs.model.takeIf { isReady(context, it) } ?: all.map { it.id }.firstOrNull { isReady(context, it) }
+
+    /** Encoder, decoder and tokens paths. */
     fun paths(context: Context, id: String): Triple<String, String, String> {
         val f = files(id)
-        return if (id == BUILT_IN) Triple("models/$id/${f[0]}", "models/$id/${f[1]}", "models/$id/${f[2]}")
-        else dir(context, id).let { d -> Triple(File(d, f[0]).path, File(d, f[1]).path, File(d, f[2]).path) }
+        return dir(context, id).let { d -> Triple(File(d, f[0]).path, File(d, f[1]).path, File(d, f[2]).path) }
     }
 
     @Volatile var downloading: String? = null
@@ -82,6 +83,6 @@ object Models {
     }
 
     fun delete(context: Context, id: String) {
-        if (id != BUILT_IN) dir(context, id).deleteRecursively()
+        dir(context, id).deleteRecursively()
     }
 }
