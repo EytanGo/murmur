@@ -22,7 +22,12 @@ uv pip install --python "$HOME/Library/Application Support/Murmur/venv/bin/pytho
 
 ## Android app (`android/`)
 
-Kotlin app for Android 10+, built for the Galaxy Z Fold 7. Styled with the "Pebble" design: soft sage surfaces, Bricolage Grotesque and Nunito (bundled, SIL Open Font License).
+Kotlin, Android 10+, built for the Galaxy Z Fold 7. Two apps from one codebase (product flavors), installable side by side and sharing the engine, settings and look:
+
+- **Murmur** (`keyboard` flavor): the Murmur Keyboard described below.
+- **Murmur Bubble** (`bubble` flavor, `co.choclement.murmur.bubble`): no keyboard; a floating hold-to-talk bubble above whatever keyboard you use (Gboard stays), remembered position per app, hold or tap mode, slide away to cancel. Hidden while the Murmur keyboard is active.
+
+Shared code lives in `app/src/main`; each app's own code in `app/src/keyboard` and `app/src/bubble`. Styled with the "Pebble" design: soft sage surfaces, Bricolage Grotesque and Nunito (bundled, SIL Open Font License).
 
 - **Murmur Keyboard**, a Gboard-style keyboard with two modes:
   - **Voice mode:** no keys. Tap any text box and it starts listening; your words appear live as you speak. The waveform button pauses (green listening, red paused), and **Send** finishes and sends (search/go, or taps the app's send button in chat apps like WhatsApp).
@@ -39,7 +44,8 @@ Kotlin app for Android 10+, built for the Galaxy Z Fold 7. Styled with the "Pebb
 ```bash
 cd android
 ./fetch-deps.sh            # speech engine + voice detector, too large for git
-./gradlew assembleRelease
+./gradlew assembleKeyboardRelease   # Murmur
+./gradlew assembleBubbleRelease     # Murmur Bubble
 ```
 
 Release builds need a signing key (`murmur-release.jks` and `keystore.properties`), which aren't in this repo. See `android/INSTALL.md` for installing on a phone.

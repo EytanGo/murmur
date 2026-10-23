@@ -2,6 +2,8 @@ package co.choclement.murmur
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Canvas
@@ -45,6 +47,7 @@ class MainActivity : Activity() {
     private lateinit var cleanupNote: TextView
     private lateinit var snippetList: LinearLayout
     private lateinit var snippetForm: LinearLayout
+    private lateinit var lastText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,14 +101,14 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(p.px(74f), p.px(74f)).apply { marginEnd = p.px(8f) })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(p.text("Murmur", 32f, weight = 800, display = true))
-                addView(p.text("Talk softly. It types.", 14f, look.muted, 600))
+                addView(p.text(if (Edition.BUBBLE) "Murmur Bubble" else "Murmur", if (Edition.BUBBLE) 28f else 32f, weight = 800, display = true))
+                addView(p.text(if (Edition.BUBBLE) "Hold the bubble. Talk softly. It types." else "Talk softly. It types.", 14f, look.muted, 600))
                 addView(p.text("Version ${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}", 12f, look.muted, 700))
             })
         })
 
-        // The Murmur keyboard
-        col.addView(p.card {
+        // The Murmur keyboard (keyboard edition)
+        if (!Edition.BUBBLE) col.addView(p.card {
             addView(p.heading("Murmur Keyboard") { c, x, y, color -> look.keyboard(c, x, y, color) })
             addView(p.text("Voice mode has no keys: tap any text box and it listens, your words appear as you speak, " +
                 "then tap Send. Typing mode is a regular keyboard.", 13f, look.muted, 600).apply { setPadding(0, 0, 0, p.px(6f)) })
@@ -121,15 +124,21 @@ class MainActivity : Activity() {
         col.addView(p.card {
             addView(p.heading("Setup") { c, x, y, color -> look.mic(c, x, y, color, 0.8f) })
             micRow = statusRow("Microphone", "Allow") {
-                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+                // The bubble also shows a quiet "Murmur is listening" notification while you hold it.
+                requestPermissions(if (Edition.BUBBLE) arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
+                    else arrayOf(Manifest.permission.RECORD_AUDIO), 1)
             }
             addView(micRow)
-            axRow = statusRow("Send in chat apps", "Turn on") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            axRow = statusRow(if (Edition.BUBBLE) "Murmur Bubble" else "Send in chat apps", "Turn on") {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
             addView(axRow)
             axHelp = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(p.text("Lets Send in voice mode press WhatsApp's (and other chat apps') own send button. " +
-                    "In the list, tap Installed apps › Murmur send button › turn it on.\n\n" +
+                addView(p.text((if (Edition.BUBBLE) "Shows the bubble above your keyboard and types your words in. " +
+                    "In the list, tap Installed apps › Murmur Bubble › turn it on.\n\n"
+                    else "Lets Send in voice mode press WhatsApp's (and other chat apps') own send button. " +
+                    "In the list, tap Installed apps › Murmur send button › turn it on.\n\n") +
                     "If the switch is greyed out (\"Restricted setting\"): open App info, tap ⋮ in the top corner, " +
                     "choose Allow restricted settings, then come back and try again.", 13f, look.muted, 600).apply {
                     setPadding(0, p.px(4f), 0, p.px(6f))
@@ -139,6 +148,25 @@ class MainActivity : Activity() {
                 })
             }
             addView(axHelp)
+        })
+
+        // How to talk, and where the bubble sits (bubble edition)
+        if (Edition.BUBBLE) col.addView(p.card {
+            addView(p.heading("How to talk"))
+            addView(p.segmented(listOf("hold" to "Hold to talk", "tap" to "Tap to talk"), Prefs.mode) { Prefs.mode = it })
+            addView(p.text("Slide your finger away from the bubble to cancel.", 12f, look.muted, 600).apply {
+                setPadding(p.px(4f), p.px(6f), 0, p.px(10f))
+            })
+            addView(p.heading("Bubble side"))
+            addView(p.segmented(listOf("left" to "Left", "right" to "Right"), if (Prefs.bubbleX >= 0.5f) "right" else "left") {
+                Prefs.bubbleX = if (it == "right") 0.9f else 0.1f
+            })
+            addView(p.text("Drag the bubble to move it: touch it and slide right away. Murmur remembers the spot for each app.",
+                12f, look.muted, 600).apply { setPadding(p.px(4f), p.px(6f), 0, p.px(4f)) })
+            addView(p.button("Reset positions") {
+                Prefs.resetPositions()
+                Toast.makeText(this@MainActivity, "Bubble back to its default spot in every app", Toast.LENGTH_SHORT).show()
+            }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
         })
 
         // Where the speech is turned into text
@@ -191,7 +219,8 @@ class MainActivity : Activity() {
             addView(p.row(p.heading("Snippets"), p.button("+ Add") {
                 snippetForm.visibility = if (snippetForm.visibility == View.VISIBLE) View.GONE else View.VISIBLE
             }))
-            addView(p.text("Say a short phrase and Murmur types the full text. They're also in the keyboard's clipboard.",
+            addView(p.text(if (Edition.BUBBLE) "Say a short phrase and Murmur types the full text."
+                else "Say a short phrase and Murmur types the full text. They're also in the keyboard's clipboard.",
                 12f, look.muted, 600).apply { setPadding(0, 0, 0, p.px(4f)) })
             snippetList = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
             addView(snippetList)
@@ -257,7 +286,16 @@ class MainActivity : Activity() {
         // Try it
         col.addView(p.card {
             addView(p.heading("Try it"))
-            addView(p.field("Tap here, then speak", multiLine = true).apply { tag = "tryit"; minLines = 3 })
+            addView(p.field(if (Edition.BUBBLE) "Tap here, then hold the bubble above the keyboard" else "Tap here, then speak",
+                multiLine = true).apply { tag = "tryit"; minLines = 3 })
+            if (Edition.BUBBLE) {
+                lastText = p.text("", 13f, look.muted, 600).apply { setPadding(p.px(4f), p.px(10f), 0, p.px(4f)) }
+                addView(lastText)
+                addView(p.button("Copy last dictation") {
+                    getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Murmur", Prefs.lastText))
+                    Toast.makeText(this@MainActivity, "Copied", Toast.LENGTH_SHORT).show()
+                }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            }
         })
 
         return ScrollView(this).apply {
@@ -306,9 +344,13 @@ class MainActivity : Activity() {
         val imm = getSystemService(InputMethodManager::class.java)
         val enabled = imm.enabledInputMethodList.any { it.packageName == packageName }
         val active = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith("$packageName/") == true
-        setStatus(kbEnabled, enabled)
-        setStatus(kbActive, active)
-        if (!enabled) (kbActive.getChildAt(1) as LinearLayout).getChildAt(1).visibility = View.GONE
+        if (!Edition.BUBBLE) {
+            setStatus(kbEnabled, enabled)
+            setStatus(kbActive, active)
+            if (!enabled) (kbActive.getChildAt(1) as LinearLayout).getChildAt(1).visibility = View.GONE
+        } else {
+            lastText.text = if (Prefs.lastText.isEmpty()) "No dictations yet." else "Last: ${Prefs.lastText}"
+        }
         setStatus(micRow, checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED, "Allowed")
         val ax = serviceEnabled()
         setStatus(axRow, ax, "On")
@@ -422,9 +464,7 @@ class MainActivity : Activity() {
 
     // MARK: - Testing (debug builds only)
 
-    /** adb: am start -n co.choclement.murmur/.MainActivity --es liveWav /data/local/tmp/x.wav — the next voice-mode session plays it. */
     private fun handleTestIntent(intent: Intent?) {
-        if (!BuildConfig.DEBUG) return
-        intent?.getStringExtra("liveWav")?.let { LiveSession.testAudio = WavSource.load(it) }
+        if (BuildConfig.DEBUG) Edition.handleTestIntent(intent)
     }
 }

@@ -10,7 +10,7 @@
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
-        android:label="Murmur"
+        android:label="${appLabel}"
         android:theme="@style/Murmur">
 
         <activity
@@ -24,32 +24,5 @@
             </intent-filter>
         </activity>
 
-        <!-- The Murmur keyboard: typing mode (Gboard-style keys) and voice mode (live voice typing). -->
-        <service
-            android:name=".MurmurKeyboard"
-            android:exported="true"
-            android:label="@string/keyboard_name"
-            android:permission="android.permission.BIND_INPUT_METHOD">
-            <intent-filter>
-                <action android:name="android.view.InputMethod" />
-            </intent-filter>
-            <meta-data
-                android:name="android.view.im"
-                android:resource="@xml/method" />
-        </service>
-
-        <!-- Send helper: presses a chat app's own send button when you tap Send in voice mode. -->
-        <service
-            android:name=".MurmurService"
-            android:exported="true"
-            android:label="Murmur send button"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_config" />
-        </service>
     </application>
 </manifest>

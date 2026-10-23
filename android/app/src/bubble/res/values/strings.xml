@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_summary">Hold the Murmur bubble above your keyboard to dictate.</string>
+    <string name="service_description">Murmur shows a small button above your keyboard when you are typing. Hold it, speak, and let go: your words are transcribed (on this phone, or by OpenAI if you turned on Cloud in Murmur\'s settings) and typed into the text box you are in. Murmur needs this permission to see which text box is focused and to type into it. It only listens to the microphone while you hold the button.</string>
+</resources>

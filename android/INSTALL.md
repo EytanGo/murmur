@@ -36,9 +36,20 @@ Open **Murmur**:
 - **Language**: Auto-detect, or pick one (English, Hebrew, …) for slightly better accuracy and speed.
 - Settings › **Opens with** picks which mode the keyboard starts in.
 
+## Murmur Bubble (the second app)
+
+**Murmur Bubble** is a separate app you can install alongside Murmur: instead of a keyboard, it puts a small moss-green bubble just above whatever keyboard you use (Gboard stays your keyboard). It has the same engine and settings (phone models, Cloud · OpenAI, AI cleanup, snippets, the Hebrew word fixes).
+
+- Install **Murmur-Bubble-<version>-build<number>.apk** from the same Drive folder.
+- Open **Murmur Bubble**: **Microphone › Allow** (and allow notifications: a quiet "Murmur is listening" note appears only while you hold the bubble), then **Murmur Bubble › Turn on** (Installed apps › Murmur Bubble).
+- **Hold** the bubble, speak, **let go**: the text appears at your cursor. **Cancel**: slide your finger away (the bubble turns clay red), then let go. **Tap mode**: Settings › How to talk › Tap to talk.
+- **Move it**: touch the bubble and slide right away. Murmur remembers the spot for each app; Settings › Bubble side and Reset positions.
+- If a box won't accept the text, it's copied instead: long-press in the box and tap **Paste** ("Copy last dictation" in the app also gets it back).
+- While the Murmur keyboard is your active keyboard, the bubble stays hidden (the keyboard has its own voice mode).
+
 ## Good to know
 
-- **After installing an update**, Android may turn accessibility apps off. If Send stops pressing WhatsApp's send button, turn **Murmur send button** back on (step 2.3).
+- **After installing an update**, Android may turn accessibility apps off. If Send stops pressing WhatsApp's send button, turn **Murmur send button** back on (step 2.3); if the bubble stops appearing, turn **Murmur Bubble** back on. Samsung may also put the bubble to sleep: **Settings › Apps › Murmur Bubble › Battery › Unrestricted**.
 - Murmur only listens while voice mode is listening (green). The green mic dot in the corner shows exactly when.
 
 ## Option: install over USB (skips any waiting period)
@@ -52,4 +63,4 @@ Open **Murmur**:
 
 ## For rebuilding
 
-Project: `~/Desktop/Murmur/MurmurAndroid`. Bump `versionCode`/`versionName` in `app/build.gradle.kts`, then build with `./gradlew assembleRelease`; it copies the APK to `~/Desktop/Murmur/Murmur.apk` and uploads it to your Google Drive (My Drive › Murmur) as `Murmur-<version>-build<code>.apk`, moving older ones to the Drive trash (`publish.sh` + rclone remote `murmurdrive`). The signing key is `murmur-release.jks` with its password in `keystore.properties`. Keep both: updates must be signed with the same key to install over the old version.
+Project: `~/Desktop/Murmur/MurmurAndroid`, with two editions (product flavors): `keyboard` (Murmur) and `bubble` (Murmur Bubble). Shared code is in `app/src/main`, each edition's own in `app/src/keyboard` and `app/src/bubble`. Bump that edition's `versionCode`/`versionName` in `app/build.gradle.kts`, then build with `./gradlew assembleKeyboardRelease` or `./gradlew assembleBubbleRelease`; it copies the APK to `~/Desktop/Murmur/Murmur.apk` (or `Murmur-Bubble.apk`) and uploads it to your Google Drive (My Drive › Murmur) as `Murmur-<version>-build<code>.apk` (or `Murmur-Bubble-…`), moving older ones of the same app to the Drive trash (`publish.sh` + rclone remote `murmurdrive`). The signing key is `murmur-release.jks` with its password in `keystore.properties`. Keep both: updates must be signed with the same key to install over the old version.

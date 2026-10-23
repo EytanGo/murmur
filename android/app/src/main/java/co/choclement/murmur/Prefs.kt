@@ -57,6 +57,43 @@ object Prefs {
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit().putBoolean("haptics", v).apply()
 
+    // MARK: Bubble edition
+
+    /** "hold" = hold to talk, "tap" = tap to start, tap to stop. */
+    var mode: String
+        get() = sp.getString("mode", "hold")!!
+        set(v) = sp.edit().putString("mode", v).apply()
+
+    val isHold get() = mode == "hold"
+
+    /** Where the bubble sits along the top of the keyboard, 0 = left edge, 1 = right edge. */
+    var bubbleX: Float
+        get() = sp.getFloat("bubbleX", 0.9f)
+        set(v) = sp.edit().putFloat("bubbleX", v).apply()
+
+    /**
+     * Where you've dragged the bubble in a given app: horizontal spot (0–1) and how far it's
+     * lifted (dp) from its automatic place. Apps you haven't adjusted use the default side.
+     */
+    fun position(pkg: String): Pair<Float, Float> {
+        val saved = sp.getString("pos.$pkg", null)?.split(",")?.mapNotNull { it.toFloatOrNull() }
+        return if (saved?.size == 2) saved[0] to saved[1] else bubbleX to 0f
+    }
+
+    fun savePosition(pkg: String, x: Float, liftDp: Float) =
+        sp.edit().putString("pos.$pkg", "$x,$liftDp").apply()
+
+    fun resetPositions() {
+        val e = sp.edit()
+        sp.all.keys.filter { it.startsWith("pos.") }.forEach { e.remove(it) }
+        e.apply()
+    }
+
+    /** The last dictation, so it can be copied again if a text box didn't take it. */
+    var lastText: String
+        get() = sp.getString("lastText", "")!!
+        set(v) = sp.edit().putString("lastText", v).apply()
+
     fun listen(l: SharedPreferences.OnSharedPreferenceChangeListener) = sp.registerOnSharedPreferenceChangeListener(l)
     fun unlisten(l: SharedPreferences.OnSharedPreferenceChangeListener) = sp.unregisterOnSharedPreferenceChangeListener(l)
 
